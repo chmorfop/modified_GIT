@@ -254,21 +254,20 @@ def forward_backward_example(image_files, captions, prefixs=None):
     data = collate_fn(all_data)
     # logging.info(image_transform)
 
-    data = recursive_to_device(data, 'cpu')     # cuda
+    data = recursive_to_device(data, 'cuda')     # cuda
 
     param = {}
     model = get_git_model(tokenizer, param)
-    epochs = 1
+    epochs = 10
     optimizer = optim.AdamW(model.parameters(), lr=3e-5)
     total_loss = []
     for epoch in range(epochs):
         for d in tqdm(data, desc='Epoch ' + str(epoch)):
-            print('Epoch -- ' + str(epoch))
             model.train()
 
             optimizer.zero_grad()
 
-            # model.cuda()
+            model.cuda()
             loss_dict = model(data)
             loss = sum(loss_dict.values())
             loss.backward()
@@ -277,7 +276,8 @@ def forward_backward_example(image_files, captions, prefixs=None):
             optimizer.step()
             total_loss.append(loss)
             # logging.info(loss)
-    torch.save(model.state_dict(), './test_dir')
+    torch.save(model.state_dict(), './my_model.pth')
+    print(total_loss)
 
 
 if __name__ == '__main__':
@@ -291,12 +291,15 @@ if __name__ == '__main__':
 
 
     ################# IC ################
-    pathy = '/home/chris/Desktop/'
+    #pathy = '/home/chris/Desktop/'
+    pathy ='/content/drive/MyDrive/Colab Notebooks/test_data/'
     f = open(pathy + 'captions_val2014.json')
     data = json.load(f)
-    mylimit = 10
+    mylimit = 32
     subdata = data['annotations'][:mylimit]
-    skliros = '/media/chris/4f8d85a4-7412-4e22-89be-f483a57450c0/home/morf/Desktop/tera_Downloads'
+    # skliros = '/media/chris/4f8d85a4-7412-4e22-89be-f483a57450c0/home/morf/Desktop/tera_Downloads'
+    skliros = '/content/output'
+
     myimage_ids = []
     mycaptions = []
     for s in subdata:
@@ -305,6 +308,11 @@ if __name__ == '__main__':
         mycaptions.append(s['caption'])
     # print(myimage_ids[1])
     # print(mycaptions[1])
+
+
+    ################# IC #################
+    forward_backward_example(image_files=myimage_ids,
+                             captions=mycaptions)
 
     ################# VQA ################
     # pathy = '/home/chris/Desktop/'
@@ -329,9 +337,7 @@ if __name__ == '__main__':
     #                          captions=['several boats in a large body of water', '1'])
 
 
-    ################# IC #################
-    forward_backward_example(image_files=myimage_ids,
-                             captions=mycaptions)
+
 
 
 

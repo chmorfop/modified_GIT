@@ -62,7 +62,6 @@ def get_data(image_file, prefix, target, tokenizer, image_transform):
     # CLS - 101 .... SEP - 102
     input_ids = [tokenizer.cls_token_id] + payload + [tokenizer.sep_token_id]
     need_predict = [0] + need_predict + [1]
-    print('heeeeeeeeeeee')
     im = load_image_by_pil(image_file)
     # print('*'*8)
     # print(im)
