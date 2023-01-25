@@ -22,7 +22,7 @@ def display_image(img,my_title=None):
 #
 # torch.save(tt, './tensor1.pt')
 # torch.save(xx, './tensor2.pt')
-
+print('testy.py')
 
 # print(os.getcwd())
 pathy = '/home/chris/Desktop/'
