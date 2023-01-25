@@ -1,12 +1,12 @@
-from generativeimage2text.common import Config
+from common import Config
 import json
 import os.path as op
-from generativeimage2text.common import qd_tqdm as tqdm
-from generativeimage2text.common import json_dump
-from generativeimage2text.common import pilimg_from_base64
-from generativeimage2text.torch_common import recursive_to_device
-from generativeimage2text.tsv_io import TSVFile, tsv_writer, tsv_reader
-from generativeimage2text.common import write_to_file
+from common import qd_tqdm as tqdm
+from common import json_dump
+from common import pilimg_from_base64
+from torch_common import recursive_to_device
+from .tsv_io import TSVFile, tsv_writer, tsv_reader
+from .common import write_to_file
 import torch
 import PIL
 from pprint import pformat
@@ -16,68 +16,58 @@ import torchvision.transforms as transforms
 from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
 from PIL import Image
 from azfuse import File
-from matplotlib import pyplot as plt
 
-from generativeimage2text.common import init_logging
-from generativeimage2text.common import parse_general_args
-from generativeimage2text.tsv_io import load_from_yaml_file
-from generativeimage2text.torch_common import torch_load
-from generativeimage2text.torch_common import load_state_dict
-from generativeimage2text.torch_common import resize_2d_pos_embed
-from generativeimage2text.layers.CLIP import clip
-from generativeimage2text.layers.decoder import (TransformerDecoderTextualHead,
+from .common import init_logging
+from .common import parse_general_args
+from .tsv_io import load_from_yaml_file
+from .torch_common import torch_load
+from .torch_common import load_state_dict
+from .torch_common import resize_2d_pos_embed
+from .layers.CLIP import clip
+from .layers.decoder import (TransformerDecoderTextualHead,
                              AutoRegressiveBeamSearch, GeneratorWithBeamSearch)
-from generativeimage2text.layers.decoder import CaptioningModel
-from generativeimage2text.process_image import load_image_by_pil
-from generativeimage2text.data_layer.transform import RenameKey, SelectTransform
-from generativeimage2text.data_layer.transform import ImageTransform2Dict
-from generativeimage2text.data_layer.transform import get_inception_train_transform
-from generativeimage2text.data_layer.builder import collate_fn
-from generativeimage2text.model import get_git_model
+from .layers.decoder import CaptioningModel
+from .process_image import load_image_by_pil
+from .data_layer.transform import RenameKey, SelectTransform
+from .data_layer.transform import ImageTransform2Dict
+from .data_layer.transform import get_inception_train_transform
+from .data_layer.builder import collate_fn
+from .model import get_git_model
 
 
 def get_data(image_file, prefix, target, tokenizer, image_transform):
     max_text_len = 40
-    # prefix encoding --- none for IC
     prefix_encoding = tokenizer(
         prefix, padding='do_not_pad',
         add_special_tokens=False,
         truncation=True, max_length=max_text_len)
-    # caption - target encoding  -- input ids - token type ids - attention mask
-    # 1012 i teleia sto decode
     target_encoding = tokenizer(
         target, padding='do_not_pad',
         add_special_tokens=False,
         truncation=True, max_length=max_text_len)
-    # len of target + 1 , i teleia
-    # need predict [0,0,0,1,1,1,1,1] i [1,1,1,1,]
     need_predict = [0] * len(prefix_encoding['input_ids']) + [1] * len(target_encoding['input_ids'])
-    # payload sum of input ids
     payload = prefix_encoding['input_ids'] + target_encoding['input_ids']
-
     if len(payload) > max_text_len:
         payload = payload[-(max_text_len - 2):]
         need_predict = need_predict[-(max_text_len - 2):]
-
-    # CLS - 101 .... SEP - 102
     input_ids = [tokenizer.cls_token_id] + payload + [tokenizer.sep_token_id]
     need_predict = [0] + need_predict + [1]
 
     im = load_image_by_pil(image_file)
-    # print('*'*8)
-    # print(im)
-    # print('*'*8)
+
     data = {
         'caption_tokens': torch.tensor(input_ids),
+        #'caption_lengths': len(input_ids),
         'need_predict': torch.tensor(need_predict),
         'image': im,
+        # 'rect' field can be fed in 'caption', which tells the bounding box
+        # region of the image that is described by the caption. In this case,
+        # we can optionally crop the region.
         'caption': {},
         # this iteration can be used for crop-size selection so that all GPUs
         # can process the image with the same input size
         'iteration': 0,
     }
-
-
     data = image_transform(data)
 
     return data
@@ -194,8 +184,6 @@ def get_multi_scale_image_transform(cfg, is_train, get_one=get_transform_image):
             cfg.test_crop_size = old
         return transforms.Compose(all_t)
 
-   # min size range [160-224]
-   # train crop sizes [160-176-192-208 -224]
     if is_train:
         if cfg.min_size_range32 is None:
             train_crop_sizes = [cfg.train_crop_size]
@@ -238,32 +226,81 @@ def forward_backward_example(image_files, captions, prefixs=None):
     all_data = []
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
     image_transform = get_image_transform(cfg)
-
-
-    #### ?? image_transform ??
-    ## transformations normalization etc..
-
-
     for image_file, prefix, target in zip(image_files, prefixs, captions):
         data = get_data(image_file, prefix, target,
                         tokenizer, image_transform)
         all_data.append(data)
-
     data = collate_fn(all_data)
-    # logging.info(image_transform)
-
-    data = recursive_to_device(data, 'cpu') # cuda
+    logging.info(image_transform)
+    data = recursive_to_device(data, 'cuda')
 
     param = {}
     model = get_git_model(tokenizer, param)
     model.train()
-    # model.cuda()
+    model.cuda()
     loss_dict = model(data)
     loss = sum(loss_dict.values())
     loss.backward()
     logging.info(loss)
 
+def speed_test_forward_backward():
+    duplicate = 32
+    image_files = ['aux_data/images/1.jpg', 'aux_data/images/2.jpg'] * duplicate
+    captions = ['a couple of boats in a large body of water.', 'a view of a mountain with a tree'] * duplicate
 
+    prefixs = [''] * len(captions)
+    cfg = {
+        'crop_region_extend_in_datatransform': 4,
+        'data_normalize': 'clip',
+        'train_crop_size': 224,
+        'input_small_scale': 0.8,
+        'no_color_jitter': True,
+        'no_flip': True,
+        'no_aspect_dist': True,
+        'interpolation': 'bicubic',
+        'min_size_range32': [160, 224], # in pretraining, it is multi-scale from 160 to 224; while for fine-tuning, it is single scale
+        'patch_size': 16,
+        'train_transform': 'vitp',
+    }
+    cfg = Config(cfg, {})
+    all_data = []
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
+    image_transform = get_image_transform(cfg)
+    for image_file, prefix, target in zip(image_files, prefixs, captions):
+        data = get_data(image_file, prefix, target,
+                        tokenizer, image_transform)
+        all_data.append(data)
+    data = collate_fn(all_data)
+    logging.info(image_transform)
+    data = recursive_to_device(data, 'cuda')
+    data['image'] = data['image'].to(torch.float16)
+
+    param = {}
+    model = get_git_model(tokenizer, param)
+    model.train()
+    model.cuda()
+    model.half()
+
+    # warmup
+    for _ in range(2):
+        loss_dict = model(data)
+        loss = sum(loss_dict.values())
+        loss.backward()
+
+    import time
+    start = time.time()
+    for iteration in range(1000):
+        loss_dict = model(data)
+        loss = sum(loss_dict.values())
+        loss.backward()
+        if (iteration % 10) == 0:
+            end = time.time()
+            speed = data['image'].shape[0] * 100 / (end - start)
+            if iteration > 0:
+                logging.info('speed = {}'.format(speed))
+            start = time.time()
+
+    logging.info(loss)
 
 
 if __name__ == '__main__':
@@ -271,22 +308,16 @@ if __name__ == '__main__':
     init_logging()
     kwargs = parse_general_args()
     logging.info('param:\n{}'.format(pformat(kwargs)))
-    # function_name = kwargs['type']
-    # del kwargs['type']
-    # locals()[function_name](**kwargs)
+    function_name = kwargs['type']
+    del kwargs['type']
 
-
-    # VQA ################
-    # forward_backward_example(image_files=['aux_data/images/1.jpg', 'aux_data/images/2.jpg'],
-    #                          prefixs=['what is this?', 'how many trees?'],
-    #                          captions=['several boats in a large body of water', '1'])
-
-
-    # IC ################
+    "{'type': 'forward_backward_example', \
+                    'image_files': ['aux_data/images/1.jpg', 'aux_data/images/2.jpg'], \
+                    'prefixs': ['what is this?', 'how many trees?'], \
+                    'captions': ['several boats in a large body of water', '1'], \
+                }"
     forward_backward_example(image_files=['aux_data/images/1.jpg', 'aux_data/images/2.jpg'],
-                             captions=['a couple of boats in a large body of water.',
-                                         'a view of a mountain with a tree'])
-
-
-
+                             prefixs=['what is this?', 'how many trees?'],
+                             captions=['several boats in a large body of water', '1'])
+    # locals()[function_name](**kwargs)
 

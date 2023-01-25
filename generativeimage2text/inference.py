@@ -68,6 +68,10 @@ def test_git_inference_single_image(image_path, model_name, prefix):
     param = {}
     if File.isfile(f'aux_data/models/{model_name}/parameter.yaml'):
         param = load_from_yaml_file(f'aux_data/models/{model_name}/parameter.yaml')
+        print('hoho?')
+    else:
+        print('hehe?')
+    print(param)
 
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
     if isinstance(image_path, str):
@@ -78,18 +82,24 @@ def test_git_inference_single_image(image_path, model_name, prefix):
 
     transforms = get_image_transform(param)
     img = [transforms(i) for i in img]
+    # print(img)
 
     # model
     model = get_git_model(tokenizer, param)
+    # print(model)
+    print('******************'*8)
     pretrained = f'output/{model_name}/snapshot/model.pt'
     checkpoint = torch_load(pretrained)['model']
+    # print(checkpoint)
     load_state_dict(model, checkpoint)
-    model.cuda()
+    # print(model)
+    # model.cuda()
     model.eval()
-    img = [i.unsqueeze(0).cuda() for i in img]
+    img = [i.unsqueeze(0) for i in img]
 
     # prefix
     max_text_len = 40
+    print('here?')
     prefix_encoding = tokenizer(prefix,
                                 padding='do_not_pad',
                                 truncation=True,
@@ -134,7 +144,9 @@ def get_image_transform(param):
 def test_git_inference_single_tsv(image_tsv, model_name, question_tsv, out_tsv):
     param = {}
     if File.isfile(f'output/{model_name}/parameter.yaml'):
+        print('here?')
         param = load_from_yaml_file(f'output/{model_name}/parameter.yaml')
+
 
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
     image_tsv = TSVFile(image_tsv)
@@ -313,10 +325,15 @@ def evaluate_on_coco_caption(res_file, label_file, outfile=None,
     return result
 
 if __name__ == '__main__':
-    init_logging()
+    #init_logging()
     kwargs = parse_general_args()
-    logging.info('param:\n{}'.format(pformat(kwargs)))
-    function_name = kwargs['type']
-    del kwargs['type']
-    locals()[function_name](**kwargs)
+    #logging.info('param:\n{}'.format(pformat(kwargs)))
+    # function_name = kwargs['type']
+    # print("function_name : " + str(function_name))
+    # print(kwargs)
+    # print(kwargs.keys())
+    # print(type(kwargs))
+    # del kwargs['type']
+    # locals()[function_name](**kwargs)
+    test_git_inference_single_image(image_path='aux_data/images/1.jpg',model_name='GIT_LARGE_COCO',prefix='')
 

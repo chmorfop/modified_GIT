@@ -2,8 +2,10 @@ from PIL import Image
 
 
 def load_image_by_pil(file_name, respect_exif=False):
+    # '../'
+    #temp = '../'
     if isinstance(file_name, str):
-        image = Image.open(file_name).convert('RGB')
+        image = Image.open( file_name).convert('RGB')
     elif isinstance(file_name, bytes):
         import io
         image = Image.open(io.BytesIO(file_name)).convert('RGB')

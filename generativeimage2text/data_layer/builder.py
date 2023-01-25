@@ -3,6 +3,7 @@ import torch
 
 
 def collate_fn(batch):
+    # arrange in proper order
     # this function is designed to support any customized type and to be compatible
     # with the default collate function
     ele = batch[0]

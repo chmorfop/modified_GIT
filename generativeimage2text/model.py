@@ -1,8 +1,8 @@
-from .torch_common import resize_2d_pos_embed
+from generativeimage2text.torch_common import resize_2d_pos_embed
 import torch
-from .layers.CLIP import clip
-from .layers.decoder import CaptioningModel
-from .layers.decoder import (TransformerDecoderTextualHead,
+from generativeimage2text.layers.CLIP import clip
+from generativeimage2text.layers.decoder import CaptioningModel
+from generativeimage2text.layers.decoder import (TransformerDecoderTextualHead,
                              AutoRegressiveBeamSearch, GeneratorWithBeamSearch)
 
 
@@ -64,6 +64,7 @@ def get_image_encoder(encoder_type, input_resolution=224):
     ret.to(torch.float32)
     ret.output_grid = True
     ret.grid_after_ln = True
+    # 224 input resolution?
     if ret.input_resolution != input_resolution:
         if encoder_type in ['CLIPViT_B_16', 'CLIPViT_L_14']:
             pos = ret.positional_embedding

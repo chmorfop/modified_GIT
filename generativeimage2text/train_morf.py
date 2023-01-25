@@ -1,5 +1,7 @@
 from generativeimage2text.common import Config
 import json
+from torch import optim
+
 import os.path as op
 from generativeimage2text.common import qd_tqdm as tqdm
 from generativeimage2text.common import json_dump
@@ -252,40 +254,84 @@ def forward_backward_example(image_files, captions, prefixs=None):
     data = collate_fn(all_data)
     # logging.info(image_transform)
 
-    data = recursive_to_device(data, 'cpu') # cuda
+    data = recursive_to_device(data, 'cpu')     # cuda
 
     param = {}
     model = get_git_model(tokenizer, param)
-    model.train()
-    # model.cuda()
-    loss_dict = model(data)
-    loss = sum(loss_dict.values())
-    loss.backward()
-    logging.info(loss)
+    epochs = 1
+    optimizer = optim.AdamW(model.parameters(), lr=3e-5)
+    total_loss = []
+    for epoch in range(epochs):
+        for d in tqdm(data, desc='Epoch ' + str(epoch)):
+            print('Epoch -- ' + str(epoch))
+            model.train()
 
+            optimizer.zero_grad()
 
+            # model.cuda()
+            loss_dict = model(data)
+            loss = sum(loss_dict.values())
+            loss.backward()
+
+            # update weights
+            optimizer.step()
+            total_loss.append(loss)
+            # logging.info(loss)
+    torch.save(model.state_dict(), './test_dir')
 
 
 if __name__ == '__main__':
     print('hello..')
     init_logging()
     kwargs = parse_general_args()
-    logging.info('param:\n{}'.format(pformat(kwargs)))
+    # logging.info('param:\n{}'.format(pformat(kwargs)))
     # function_name = kwargs['type']
     # del kwargs['type']
     # locals()[function_name](**kwargs)
 
 
-    # VQA ################
+    ################# IC ################
+    pathy = '/home/chris/Desktop/'
+    f = open(pathy + 'captions_val2014.json')
+    data = json.load(f)
+    mylimit = 10
+    subdata = data['annotations'][:mylimit]
+    skliros = '/media/chris/4f8d85a4-7412-4e22-89be-f483a57450c0/home/morf/Desktop/tera_Downloads'
+    myimage_ids = []
+    mycaptions = []
+    for s in subdata:
+        filename = f"/val2014/COCO_val2014_{int(s['image_id']):012d}.jpg"
+        myimage_ids.append(skliros + filename)
+        mycaptions.append(s['caption'])
+    # print(myimage_ids[1])
+    # print(mycaptions[1])
+
+    ################# VQA ################
+    # pathy = '/home/chris/Desktop/'
+    # f = open(pathy + 'val_data.json')
+    # data = json.load(f)
+    # mylimit = 20
+    # subdata = data[:mylimit]
+    # # image_id - answer - caption
+    # skliros = '/media/chris/4f8d85a4-7412-4e22-89be-f483a57450c0/home/morf/Desktop/tera_Downloads'
+    # myimage_ids = []
+    # mycaptions = []
+    # myquestions = []
+    # for s in subdata:
+    #     filename = f"/val2014/COCO_val2014_{int(s['image_id']):012d}.jpg"
+    #     myimage_ids.append(skliros + filename)
+    #     mycaptions.append(s['answer'])
+    #     myquestions.append(s['question'])
+
+    ################# VQA ################
     # forward_backward_example(image_files=['aux_data/images/1.jpg', 'aux_data/images/2.jpg'],
     #                          prefixs=['what is this?', 'how many trees?'],
     #                          captions=['several boats in a large body of water', '1'])
 
 
-    # IC ################
-    forward_backward_example(image_files=['aux_data/images/1.jpg', 'aux_data/images/2.jpg'],
-                             captions=['a couple of boats in a large body of water.',
-                                         'a view of a mountain with a tree'])
+    ################# IC #################
+    forward_backward_example(image_files=myimage_ids,
+                             captions=mycaptions)
 
 
 
