@@ -19,6 +19,7 @@ from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normal
 from PIL import Image
 from azfuse import File
 from matplotlib import pyplot as plt
+from torch.utils.data import Dataset, DataLoader
 
 from generativeimage2text.common import init_logging
 from generativeimage2text.common import parse_general_args
@@ -220,47 +221,123 @@ def get_multi_scale_image_transform(cfg, is_train, get_one=get_transform_image):
             d, train_crop_sizes, iteration_multi))
     return image_transform
 
+class ICVQA_Dataset(Dataset):
+    def __init__(self,myimage_ids,mycaptions,prefixs):
+        self.image_ids = myimage_ids
+        self.mycaptions = mycaptions
+        self.tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
+        self.image_transform = transforms.Compose([transforms.RandomResizedCrop(size=(160,160), scale=(0.8, 1.0), ratio=(1.0, 1.0)),
+                                                   transforms.ToTensor(),
+                                                   transforms.Normalize(mean=(0.48145466, 0.4578275, 0.40821073), std=(0.26862954, 0.26130258, 0.27577711))])
+        self.max_text_len = 40
+        if prefixs is None:
+          self.prefixs = [''] * len(mycaptions)
+        else:
+          self.prefixs = prefixs
+
+    def load_image_by_pil(self,file_name, respect_exif=False):
+        # '../'
+        #temp = '../'
+        if isinstance(file_name, str):
+            image = Image.open( file_name).convert('RGB')
+        elif isinstance(file_name, bytes):
+            import io
+            image = Image.open(io.BytesIO(file_name)).convert('RGB')
+        if respect_exif:
+            from PIL import ImageOps
+            image = ImageOps.exif_transpose(image)
+        return image
+
+    def __len__(self):
+        return len(self.image_ids)
+    
+    def __getitem__(self, index):
+
+        prefix_encoding = self.tokenizer(
+            self.prefixs[index], padding='do_not_pad',
+            add_special_tokens=False,
+            truncation=True, max_length= self.max_text_len)
+        
+        target_encoding = self.tokenizer(
+            self.mycaptions[index], padding='do_not_pad',
+            add_special_tokens=False,
+            truncation=True, max_length= self.max_text_len)
+        
+        need_predict = [0] * len(prefix_encoding['input_ids']) + [1] * len(target_encoding['input_ids'])
+        payload = prefix_encoding['input_ids'] + target_encoding['input_ids']
+
+        if len(payload) > self.max_text_len:
+            payload = payload[-(self.max_text_len - 2):]
+            need_predict = need_predict[-(self.max_text_len - 2):]
+
+        input_ids = [self.tokenizer.cls_token_id] + payload + [self.tokenizer.sep_token_id]
+        need_predict = [0] + need_predict + [1]
+
+        im = self.load_image_by_pil( self.image_ids[index])
+        return  {
+                'caption_tokens': torch.tensor(input_ids),
+                'need_predict': torch.tensor(need_predict),
+                'image': self.image_transform(im),
+                'caption': {},
+                'iteration': 0,
+                        }
+
+
+def ICVQA_data_loader(myimage_ids,
+                      mycaptions,
+                      prefixs=None, 
+                      batch_size=32):
+    ds = ICVQA_Dataset(myimage_ids,mycaptions,prefixs)
+    return DataLoader(ds,batch_size=batch_size,num_workers=4,collate_fn=collate_fn)
+
 def forward_backward_example(image_files, captions, prefixs=None):
-    if prefixs is None:
-        prefixs = [''] * len(captions)
-    cfg = {
-        'crop_region_extend_in_datatransform': 4,
-        'data_normalize': 'clip',
-        'train_crop_size': 224,
-        'input_small_scale': 0.8,
-        'no_color_jitter': True,
-        'no_flip': True,
-        'no_aspect_dist': True,
-        'interpolation': 'bicubic',
-        'min_size_range32': [160, 224], # in pretraining, it is multi-scale from 160 to 224; while for fine-tuning, it is single scale
-        'patch_size': 16,
-        'train_transform': 'vitp',
-    }
-    cfg = Config(cfg, {})
-    all_data = []
+    # if prefixs is None:
+    #     prefixs = [''] * len(captions)
+    # cfg = {
+    #     'crop_region_extend_in_datatransform': 4,
+    #     'data_normalize': 'clip',
+    #     'train_crop_size': 224,
+    #     'input_small_scale': 0.8,
+    #     'no_color_jitter': True,
+    #     'no_flip': True,
+    #     'no_aspect_dist': True,
+    #     'interpolation': 'bicubic',
+    #     'min_size_range32': [160, 224], # in pretraining, it is multi-scale from 160 to 224; while for fine-tuning, it is single scale
+    #     'patch_size': 16,
+    #     'train_transform': 'vitp',
+    # }
+    # cfg = Config(cfg, {})
+    # all_data = []
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
-    image_transform = get_image_transform(cfg)
+    # image_transform = get_image_transform(cfg)
 
 
-    #### ?? image_transform ??
-    ## transformations normalization etc..
+    # #### ?? image_transform ??
+    # ## transformations normalization etc..
 
 
-    for image_file, prefix, target in zip(image_files, prefixs, captions):
-        data = get_data(image_file, prefix, target,
-                        tokenizer, image_transform)
-        all_data.append(data)
+    # for image_file, prefix, target in zip(image_files, prefixs, captions):
+    #     data = get_data(image_file, prefix, target,
+    #                     tokenizer, image_transform)
+    #     all_data.append(data)
 
-    data = collate_fn(all_data)
-    data = recursive_to_device(data, 'cuda')     # cuda
+    # data = collate_fn(all_data)
+    dloader = ICVQA_data_loader (myimage_ids=image_files,
+                      mycaptions=captions,
+                      prefixs=None, 
+                      batch_size=32)
+
 
     param = {}
     model = get_git_model(tokenizer, param)
-    epochs = 10
+    epochs = 3
     optimizer = optim.AdamW(model.parameters(), lr=3e-5)
     total_loss = []
     for epoch in range(epochs):
-        for d in tqdm(data, desc='Epoch ' + str(epoch)):
+        for data in tqdm(dloader, desc='Epoch ' + str(epoch)):
+          
+            data = recursive_to_device(data, 'cuda')     # cuda
+
             model.train()
 
             optimizer.zero_grad()
@@ -268,14 +345,22 @@ def forward_backward_example(image_files, captions, prefixs=None):
             model.cuda()
             loss_dict = model(data)
             loss = sum(loss_dict.values())
+            total_loss.append(loss)
+
             loss.backward()
 
             # update weights
             optimizer.step()
-            total_loss.append(loss)
             # logging.info(loss)
     torch.save(model.state_dict(), './my_model.pth')
-    # print(total_loss)
+
+    num_loss = []
+    for t in total_loss:
+      num_loss.append(t.cpu().detach().numpy())
+    
+    print(num_loss)
+
+
 
 
 if __name__ == '__main__':
@@ -295,6 +380,7 @@ if __name__ == '__main__':
     data = json.load(f)
     mylimit = 32
     subdata = data['annotations'][:mylimit]
+    # subdata = data['annotations']
     # skliros = '/media/chris/4f8d85a4-7412-4e22-89be-f483a57450c0/home/morf/Desktop/tera_Downloads'
     skliros = '/content/output'
 
