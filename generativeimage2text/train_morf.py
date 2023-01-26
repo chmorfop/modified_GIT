@@ -252,8 +252,6 @@ def forward_backward_example(image_files, captions, prefixs=None):
         all_data.append(data)
 
     data = collate_fn(all_data)
-    # logging.info(image_transform)
-
     data = recursive_to_device(data, 'cuda')     # cuda
 
     param = {}
@@ -277,7 +275,7 @@ def forward_backward_example(image_files, captions, prefixs=None):
             total_loss.append(loss)
             # logging.info(loss)
     torch.save(model.state_dict(), './my_model.pth')
-    print(total_loss)
+    # print(total_loss)
 
 
 if __name__ == '__main__':
