@@ -47,7 +47,6 @@ def torch_load(filename):
         buf = io.BytesIO(fp.read())
 
     result = torch.load(buf, map_location=lambda storage, loc: storage)
-    print(storage)
     return result
 
 def remove_prefix(model, prefix):
