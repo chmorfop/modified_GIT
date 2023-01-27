@@ -4,6 +4,7 @@ from .common import qd_tqdm as tqdm
 from .common import json_dump
 from .common import pilimg_from_base64
 from .common import get_mpi_rank, get_mpi_size, get_mpi_local_rank
+import torchvision.transforms as transforms
 
 from .tsv_io import TSVFile, tsv_writer, tsv_reader
 from .common import write_to_file
@@ -65,13 +66,14 @@ class MinMaxResizeForTest(object):
 
 
 def test_git_inference_single_image(image_path, model_name, prefix):
+    print(prefix)
     param = {}
-    if File.isfile(f'aux_data/models/{model_name}/parameter.yaml'):
-        param = load_from_yaml_file(f'aux_data/models/{model_name}/parameter.yaml')
-        print('hoho?')
-    else:
-        print('hehe?')
-    print(param)
+    # if File.isfile(f'aux_data/models/{model_name}/parameter.yaml'):
+    #     param = load_from_yaml_file(f'aux_data/models/{model_name}/parameter.yaml')
+    #     print('hoho?')
+    # else:
+    #     print('hehe?')
+    # print(param)
 
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
     if isinstance(image_path, str):
@@ -80,19 +82,28 @@ def test_git_inference_single_image(image_path, model_name, prefix):
     # frames
     img = [load_image_by_pil(i) for i in image_path]
 
-    transforms = get_image_transform(param)
-    img = [transforms(i) for i in img]
+    #transforms = get_image_transform(param)
+    prepro = transforms.Compose([transforms.RandomResizedCrop(size=(160,160), scale=(0.8, 1.0), ratio=(1.0, 1.0)),
+                                                   transforms.ToTensor(),
+                                                   transforms.Normalize(mean=(0.48145466, 0.4578275, 0.40821073), std=(0.26862954, 0.26130258, 0.27577711))])
+
+
+
+    img = [prepro(i) for i in img]
     # print(img)
 
     # model
     model = get_git_model(tokenizer, param)
     # print(model)
     print('******************'*8)
-    pretrained = f'output/{model_name}/snapshot/model.pt'
-    checkpoint = torch_load(pretrained)['model']
-    # print(checkpoint)
-    load_state_dict(model, checkpoint)
-    # print(model)
+    ttpath  = '/content/drive/MyDrive/Colab Notebooks/ROCO_models/my_VQA_model.pth'
+    #pretrained = f'output/{model_name}/snapshot/model.pt'
+
+
+    # checkpoint = torch_load(pretrained)['model']
+    # load_state_dict(model, checkpoint)
+
+    model.load_state_dict(torch.load(ttpath))
     # model.cuda()
     model.eval()
     img = [i.unsqueeze(0) for i in img]
@@ -113,10 +124,10 @@ def test_git_inference_single_image(image_path, model_name, prefix):
     with torch.no_grad():
         result = model({
             'image': img,
-            'prefix': torch.tensor(input_ids).unsqueeze(0).cuda(),
+            'prefix': torch.tensor(input_ids).unsqueeze(0),
         })
     cap = tokenizer.decode(result['predictions'][0].tolist(), skip_special_tokens=True)
-    logging.info('output: {}'.format(cap))
+    print('output: {}'.format(cap))
 
 def get_image_transform(param):
     crop_size = param.get('test_crop_size', 224)
@@ -335,5 +346,7 @@ if __name__ == '__main__':
     # print(type(kwargs))
     # del kwargs['type']
     # locals()[function_name](**kwargs)
-    test_git_inference_single_image(image_path='aux_data/images/1.jpg',model_name='GIT_LARGE_COCO',prefix='')
+    test_git_inference_single_image(image_path='aux_data/images/study.jpg',
+    model_name='GIT_LARGE_COCO',
+    prefix='What is this?')
 

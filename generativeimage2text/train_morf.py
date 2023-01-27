@@ -390,13 +390,14 @@ if __name__ == '__main__':
         filename = f"/val2014/COCO_val2014_{int(s['image_id']):012d}.jpg"
         myimage_ids.append(skliros + filename)
         mycaptions.append(s['caption'])
-    # print(myimage_ids[1])
-    # print(mycaptions[1])
+    print()
+    print(myimage_ids[1])
+    print(mycaptions[1])
 
 
     ################# IC #################
-    forward_backward_example(image_files=myimage_ids,
-                             captions=mycaptions)
+    # forward_backward_example(image_files=myimage_ids,
+    #                          captions=mycaptions)
 
     ################# VQA ################
     # pathy = '/home/chris/Desktop/'
