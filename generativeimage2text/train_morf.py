@@ -291,37 +291,9 @@ def ICVQA_data_loader(myimage_ids,
     return DataLoader(ds,batch_size=batch_size,num_workers=4,collate_fn=collate_fn)
 
 def forward_backward_example(image_files, captions, prefixs=None):
-    # if prefixs is None:
-    #     prefixs = [''] * len(captions)
-    # cfg = {
-    #     'crop_region_extend_in_datatransform': 4,
-    #     'data_normalize': 'clip',
-    #     'train_crop_size': 224,
-    #     'input_small_scale': 0.8,
-    #     'no_color_jitter': True,
-    #     'no_flip': True,
-    #     'no_aspect_dist': True,
-    #     'interpolation': 'bicubic',
-    #     'min_size_range32': [160, 224], # in pretraining, it is multi-scale from 160 to 224; while for fine-tuning, it is single scale
-    #     'patch_size': 16,
-    #     'train_transform': 'vitp',
-    # }
-    # cfg = Config(cfg, {})
-    # all_data = []
+
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
-    # image_transform = get_image_transform(cfg)
 
-
-    # #### ?? image_transform ??
-    # ## transformations normalization etc..
-
-
-    # for image_file, prefix, target in zip(image_files, prefixs, captions):
-    #     data = get_data(image_file, prefix, target,
-    #                     tokenizer, image_transform)
-    #     all_data.append(data)
-
-    # data = collate_fn(all_data)
     dloader = ICVQA_data_loader (myimage_ids=image_files,
                       mycaptions=captions,
                       prefixs=None, 
@@ -335,7 +307,6 @@ def forward_backward_example(image_files, captions, prefixs=None):
     total_loss = []
     for epoch in range(epochs):
         for data in tqdm(dloader, desc='Epoch ' + str(epoch)):
-          
             data = recursive_to_device(data, 'cuda')     # cuda
 
             model.train()
@@ -357,7 +328,7 @@ def forward_backward_example(image_files, captions, prefixs=None):
     num_loss = []
     for t in total_loss:
       num_loss.append(t.cpu().detach().numpy())
-    
+
     print(num_loss)
 
 
